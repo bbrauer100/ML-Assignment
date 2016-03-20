@@ -1,0 +1,178 @@
+---
+title: "Machine Learning Assignment"
+author: "Ben Brauer"
+date: "March 19, 2016"
+output: html_document
+---
+
+##Preliminary Work
+
+###Reproduceability
+
+An overall pseudo-random number generator seed was set at 5678 for all code. In order to reproduce the results below, the same seed should be used.
+
+Different packages were downloaded and installed, such as caret and randomForest. These should also be installed in order to reproduce the results below (please see code below for ways and syntax to do so).
+
+###How the model was built
+
+Our outcome variable is classe, a factor variable with 5 levels. For this data set, "participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in 5 different fashions:
+- exactly according to the specification (Class A)
+- throwing the elbows to the front (Class B)
+- lifting the dumbbell only halfway (Class C)
+- lowering the dumbbell only halfway (Class D)
+- throwing the hips to the front (Class E)
+
+Prediction evaluations will be based on maximizing the accuracy and minimizing the out-of-sample error. All other available variables after cleaning will be used for prediction.
+
+Two models will be tested using decision tree and random forest algorithms. The model with the highest accuracy will be chosen as our final model.
+
+###Cross-validation
+
+Cross-validation will be performed by subsampling our training data set randomly without replacement into 2 subsamples: subTraining data (75% of the original Training data set) and subTesting data (25%). Our models will be fitted on the subTraining data set, and tested on the subTesting data. Once the most accurate model is choosen, it will be tested on the original Testing data set.
+
+###Expected out-of-sample error
+
+The expected out-of-sample error will correspond to the quantity: 1-accuracy in the cross-validation data. Accuracy is the proportion of correct classified observation over the total sample in the subTesting data set. Expected accuracy is the expected accuracy in the out-of-sample data set (i.e. original testing data set). Thus, the expected value of the out-of-sample error will correspond to the expected number of missclassified observations/total observations in the Test data set, which is the quantity: 1-accuracy found from the cross-validation data set.
+
+###Reasons for my choices
+
+Our outcome variable "classe" is an unordered factor variable. Thus, we can choose our error type as 1-accuracy. We have a large sample size with N= 19622 in the Training data set. This allow us to divide our Training sample into subTraining and subTesting to allow cross-validation. Features with all missing values will be discarded as well as features that are irrelevant. All other features will be kept as relevant variables.
+
+Decision tree and random forest algorithms are known for their ability of detecting the features that are important for classification [2]. Feature selection is inherent, so it is not so necessary at the data preparation phase. Thus, there won't be any feature selection section in this report.
+
+
+##Code and Results
+
+Packages, Libraries, Seed
+
+Installing packages, loading libraries, and setting the seed for reproduceability:
+
+
+```{r echo=TRUE}
+#install.packages("caret")
+#install.packages("randomForest")
+#install.packages("rpart")
+#install.packages("rpart.plot")
+library(caret)
+library(randomForest) #Random forest for classification and regression
+library(rpart) #Regressive Partitioning and Regression trees
+library(rpart.plot) #Decision tree plot
+library(e1071)
+
+# setting the overall seed for reproduceability
+set.seed(5678)
+```
+
+Loading data sets and preliminary cleaning
+
+First we want to load the data sets into R and make sure that missing values are coded correctly.
+Irrelevant variables will be deleted.
+
+Results will be hidden from the report for clarity and space considerations.
+
+```{r echo=TRUE}
+# After saving both data sets into my working directory
+# Some missing values are coded as string "#DIV/0!" or "" or "NA" - these will be changed to NA.
+# We notice that both data sets contain columns with all missing values - these will be deleted.  
+
+# Loading the training data set into my R session replacing all missing with "NA"
+trainingset <- read.csv("C:/Users/BeBrauer/Documents/pml-training.csv", na.strings=c("NA","#DIV/0!", ""))
+
+# Loading the testing data set 
+testingset <- read.csv("C:/Users/BeBrauer/Documents/pml-testing.csv", na.strings=c("NA","#DIV/0!", ""))
+
+# Check dimensions for number of variables and number of observations
+dim(trainingset)
+dim(testingset)
+
+# Delete columns with all missing values
+trainingset<-trainingset[,colSums(is.na(trainingset)) == 0]
+testingset <-testingset[,colSums(is.na(testingset)) == 0]
+
+# Some variables are irrelevant to our current project: user_name, raw_timestamp_part_1, raw_timestamp_part_,2 cvtd_timestamp, new_window, and  num_window (columns 1 to 7). We can delete these variables.
+trainingset   <-trainingset[,-c(1:7)]
+testingset <-testingset[,-c(1:7)]
+
+# and have a look at our new datasets:
+dim(trainingset)
+dim(testingset)
+head(trainingset)
+head(testingset)
+```
+
+Partitioning the training data set to allow cross-validation
+
+The training data set contains 53 variables and 19622 obs.
+The testing data set contains 53 variables and 20 obs.
+In order to perform cross-validation, the training data set is partionned into 2 sets: subTraining (75%) and subTest (25%).
+This will be performed using random subsampling without replacement.
+
+```{r echo=TRUE}
+subsamples <- createDataPartition(y=trainingset$classe, p=0.75, list=FALSE)
+subTraining <- trainingset[subsamples, ] 
+subTesting <- trainingset[-subsamples, ]
+dim(subTraining)
+dim(subTesting)
+head(subTraining)
+head(subTesting)
+```
+A look at the Data
+
+The variable "classe" contains 5 levels: A, B, C, D and E. A plot of the outcome variable will allow us to see the frequency of each levels in the subTraining data set and compare one another.
+
+```{r echo=TRUE}
+plot(subTraining$classe, col="blue", main="Bar Plot of levels of the variable classe within the subTraining data set", xlab="classe levels", ylab="Frequency")
+```
+From the graph above, we can see that each level frequency is within the same order of magnitude of each other. Level A is the most frequent with more than 4000 occurrences while level D is the least frequent with about 2500 occurrences.
+
+First prediction model: Using Decision Tree
+```{r echo=TRUE}
+model1 <- rpart(classe ~ ., data=subTraining, method="class")
+
+# Predicting:
+prediction1 <- predict(model1, subTesting, type = "class")
+
+# Plot of the Decision Tree
+rpart.plot(model1, main="Classification Tree", extra=102, under=TRUE, faclen=0)
+```
+
+```{r echo=TRUE}
+# Test results on our subTesting data set:
+confusionMatrix(prediction1, subTesting$classe)
+```
+
+```{r echo=TRUE}
+model2 <- randomForest(classe ~. , data=subTraining, method="class")
+
+# Predicting:
+prediction2 <- predict(model2, subTesting, type = "class")
+
+# Test results on subTesting data set:
+confusionMatrix(prediction2, subTesting$classe)
+```
+
+Decision
+
+As expected, Random Forest algorithm performed better than Decision Trees.
+
+Accuracy for Random Forest model was 0.995 (95% CI: (0.993, 0.997)) compared to 0.739 (95% CI: (0.727, 0.752)) for Decision Tree model. The random Forest model is choosen. The accuracy of the model is 0.995. The expected out-of-sample error is estimated at 0.005, or 0.5%. The expected out-of-sample error is calculated as 1 - accuracy for predictions made against the cross-validation set. Our Test data set comprises 20 cases. With an accuracy above 99% on our cross-validation data, we can expect that very few, or none, of the test samples will be missclassified.
+
+##Submission
+```{r echo=TRUE}
+# predict outcome levels on the original Testing data set using Random Forest algorithm
+predictfinal <- predict(model2, testingset, type="class")
+predictfinal
+```
+
+```{r echo=TRUE}
+# Write files for submission
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(predictfinal)
+```
